@@ -1,0 +1,24 @@
+Data is compressed csv,
+
+id,chain,dept,category,company,brand,date,productsize,productmeasure,purchasequantity,purchaseamount
+
+ * id - customer id
+ * chain - store chain
+ * dept - dept of store
+ * category - some thing in a store
+ * company - the company that makes the product
+ * brand - a particular product brand
+ * purchasequantity - amount purchased.
+
+
+A customer is (id,chain), maybe just id
+A product is (company, brand)
+
+
+learn a bunch of vectors, v(id),  and w(company,brand), s.t.
+    max over the dataset log p(w|v)
+
+3/1/13 is where the coupon junk starts
+
+
+The coupon2vec.full reads the unpacked data file, assuming its in /data/ and writes its results to output
