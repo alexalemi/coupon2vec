@@ -18,6 +18,7 @@
 
 
 // num_customers=111137, num_products=42327
+/* #define DATAFILE "data/shuftransactions.csv"  // Note there are 142,221,150 lines */
 #define DATAFILE "data/transactions.csv"  // Note there are 142,221,150 lines
 #define CUSTFILE "output/cust_vecs"
 #define PRODFILE "output/prod_vecs"
@@ -219,6 +220,14 @@ void print_products(FILE *fp) {
 }
 
 
+double inline getmult(double label, double dot) {
+    double mult;
+    // get the multiplier
+    if (dot > MAX_EXP) mult = (label - 1.);
+    else if (dot < -MAX_EXP) mult = (label - 0.);
+    else mult = (label-exp_table[(int)((dot + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]);
+    return mult;
+}
 
 // learn some stuff
 void run(FILE *fp) {
@@ -241,7 +250,7 @@ void run(FILE *fp) {
     real *randcv;
     real *randpv;
 
-    real dot, mult, mymult;
+    real dot, mult;
     long customer_loc, product_loc;
 
     long linenum = 1; 
@@ -263,62 +272,42 @@ void run(FILE *fp) {
         label = 1;
         cv = customer_vecs + customer_loc*D;
         pv = product_vecs  + product_loc*D;
-        /* alpha = ALPHA; */
-        /* alpha = ALPHA * (1. - linenum / (real)(LINES + 1.)); */
-        /* if (alpha < ALPHA * 0.0001) alpha = ALPHA * 0.0001; */
+        alpha = ALPHA;
+        alpha = ALPHA * (1. - linenum / (real)(LINES + 1.));
+        if (alpha < ALPHA * 0.0001) alpha = ALPHA * 0.0001;
 
-        dot = 0.;
-        mult = 0.;
-        // get the dot product
-        for (int i=0; i<D; i++) dot += cv[i]*pv[i];
-
-        // get the multiplier
-        if (dot > MAX_EXP) mult = (label - 1.)*alpha;
-        else if (dot < -MAX_EXP) mult = (label - 0.)*alpha;
-        else mult = (label-exp_table[(int)((dot + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))])*alpha;
-
-        /* debug("Looking at customer: %ld, product: %ld, dot: %g, mult: %g", custint, prodint, dot, mult); */
+        /* debug("Looking at customer: %ld, product: %ld, dot: %g, mult: %g", customer_loc, product_loc, dot, mult); */
         // adjust the weights
-        mymult = quantity*mult;
-        for (int i=0; i<D; i++)  custupdate[i] = -mymult*pv[i];
-        for (int i=0; i<D; i++)  produpdate[i] = -mymult*cv[i];
+        dot = 0.;
+        for (int i=0; i<D; i++) dot += cv[i]*pv[i];
+        mult = quantity*getmult(1., dot)*alpha;
+        for (int i=0; i<D; i++)  custupdate[i] = mult*pv[i];
+        for (int i=0; i<D; i++)  produpdate[i] = mult*cv[i];
 
-        label = 0.;
         for (int i=0; i<quantity*NEGS; i++) {
             long randp = (lqrand()%PRODS);
             randpv = product_vecs + D*randp;
-            dot = 0.;
             // get the dot product
+            dot = 0.;
             for (int i=0; i<D; i++) dot += cv[i]*randpv[i];
-
             // get the multiplier
-            if (dot > MAX_EXP) mult = (label - 1.)*alpha;
-            else if (dot < -MAX_EXP) mult = (label - 0.)*alpha;
-            else mult = (label-exp_table[(int)((dot + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))])*alpha/(NEGS+0.);
-
+            mult = getmult(0., dot)*alpha/(NEGS+0.);
             // adjust the weights
-            for (int i=0; i<D; i++)  custupdate[i] -= mult*randpv[i];
-            for (int i=0; i<D; i++)  randpv[i] -= mult*cv[i];
+            for (int i=0; i<D; i++)  custupdate[i] += mult*randpv[i];
+            for (int i=0; i<D; i++)  randpv[i] += mult*cv[i];
         }
         for (int i=0; i<quantity*NEGS; i++) {
             long randc = (lqrand()%CUSTS);
             randcv = customer_vecs + D*randc;
-            dot = 0.;
             // get the dot product
-            for (int i=0; i<D; i++) dot += cv[i]*randpv[i];
-
+            dot = 0.;
+            for (int i=0; i<D; i++) dot += randcv[i]*pv[i];
             // get the multiplier
-            if (dot > MAX_EXP) mult = (label - 1.)*alpha;
-            else if (dot < -MAX_EXP) mult = (label - 0.)*alpha;
-            else mult = (label-exp_table[(int)((dot + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))])*alpha/(NEGS+0.);
-
+            mult = getmult(0., dot)*alpha/(NEGS+0.);
             // adjust the weights
-            for (int i=0; i<D; i++)  produpdate[i] -= mult*randcv[i];
-            for (int i=0; i<D; i++)  randcv[i] -= mult*pv[i];
+            for (int i=0; i<D; i++)  produpdate[i] += mult*randcv[i];
+            for (int i=0; i<D; i++)  randcv[i] += mult*pv[i];
         }
-
-
-
 
         // apply updates
         for (int i=0; i<D; i++) cv[i] += custupdate[i];
@@ -331,14 +320,14 @@ void run(FILE *fp) {
             }
 
         if (linenum%10000 == 0) { 
-            double totcupdate = 0.;
-            double totpupdate = 0.;
-            for (int i=0; i<D; i++) totcupdate += custupdate[i]*custupdate[i];
-            for (int i=0; i<D; i++) totpupdate += produpdate[i]*produpdate[i];
-            double totcv = 0.;
-            double totpv = 0.;
-            for (int i=0; i<D; i++) totcv += cv[i]*cv[i];
-            for (int i=0; i<D; i++) totpv += pv[i]*pv[i];
+            /* double totcupdate = 0.; */
+            /* double totpupdate = 0.; */
+            /* for (int i=0; i<D; i++) totcupdate += custupdate[i]*custupdate[i]; */
+            /* for (int i=0; i<D; i++) totpupdate += produpdate[i]*produpdate[i]; */
+            /* double totcv = 0.; */
+            /* double totpv = 0.; */
+            /* for (int i=0; i<D; i++) totcv += cv[i]*cv[i]; */
+            /* for (int i=0; i<D; i++) totpv += pv[i]*pv[i]; */
             /* double totcsize = 0.; */
             /* double totpsize = 0.; */
             /* for (long i=0; i<D*CUSTS; i++) totcsize += customer_vecs[i]*customer_vecs[i]; */
@@ -350,16 +339,18 @@ void run(FILE *fp) {
             seconds_remaining -= hours*60*60;
             int minutes = seconds_remaining/60;
             seconds_remaining -= minutes*60;
-            printf("%c%ldK lines processed. %.2f%% done. alpha=%g, num_customers=%ld, num_products=%ld. est time remaining %dh%2dm, csize=%g,%g psize=%g,%g             ", 
-                    13, linenum/1000, linenum/(LINES+0.)*100., alpha, num_customers, num_products, hours, minutes, 
-                    sqrt(totcupdate), sqrt(totcv),
-                    /* sqrt(totcsize), */
-                    sqrt(totpupdate), sqrt(totpv) );
-                    /* sqrt(totpsize) ); */
+            printf("%c%ldK lines processed. %.2f%% done. alpha=%g, num_customers=%ld, num_products=%ld. est time remaining %dh%2dm             ", 
+                    13, linenum/1000, linenum/(LINES+0.)*100., alpha, num_customers, num_products, hours, minutes);
+            /* printf("%c%ldK lines processed. %.2f%% done. alpha=%g, num_customers=%ld, num_products=%ld. est time remaining %dh%2dm, csize=%g,%g psize=%g,%g             ", */ 
+            /*         13, linenum/1000, linenum/(LINES+0.)*100., alpha, num_customers, num_products, hours, minutes, */ 
+            /*         sqrt(totcupdate), sqrt(totcv), */
+            /*         /1* sqrt(totcsize), *1/ */
+            /*         sqrt(totpupdate), sqrt(totpv) ); */
+            /*         /1* sqrt(totpsize) ); *1/ */
             fflush(stdout);
         }
 
-        if (linenum%1000000 == 0) {
+        if (linenum%10000000 == 0) {
             FILE *fc = fopen(CUSTFILE,"w");
             print_customers(fc);
             fclose(fc);
