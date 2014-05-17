@@ -19,9 +19,9 @@
 
 // num_customers=111137, num_products=42327
 /* #define DATAFILE "data/shuftransactions.csv"  // Note there are 142,221,150 lines */
-#define DATAFILE "data/transactions.csv"  // Note there are 142,221,150 lines
-#define CUSTFILE "output/cust_vecs"
-#define PRODFILE "output/prod_vecs"
+#define DATAFILE "data/shuftransactions.csv"  // Note there are 142,221,150 lines
+#define CUSTFILE "output/cust_vecs_shuf"
+#define PRODFILE "output/prod_vecs_shuf"
 #define WITH_ZLIB
 #define MAX_STRING 1000
 #define ARRAY_GROWTH 1000
@@ -29,7 +29,10 @@
 #define CUSTS 311541    
 #define PRODS 61318
 #define LINES 349655789
-#define ALPHA 0.000065
+/* #define ALPHA 0.000065 */
+/* #define ALPHA 0.025 */
+/* #define ALPHA 0.0025 */
+#define ALPHA 0.025
 #define NEGS  5
 
 #define EXP_TABLE_SIZE 1000
@@ -291,7 +294,8 @@ void run(FILE *fp) {
             dot = 0.;
             for (int i=0; i<D; i++) dot += cv[i]*randpv[i];
             // get the multiplier
-            mult = getmult(0., dot)*alpha/(NEGS+0.);
+            /* mult = getmult(0., dot)*alpha/(NEGS+0.); */
+            mult = getmult(0., dot)*alpha;
             // adjust the weights
             for (int i=0; i<D; i++)  custupdate[i] += mult*randpv[i];
             for (int i=0; i<D; i++)  randpv[i] += mult*cv[i];
@@ -303,7 +307,8 @@ void run(FILE *fp) {
             dot = 0.;
             for (int i=0; i<D; i++) dot += randcv[i]*pv[i];
             // get the multiplier
-            mult = getmult(0., dot)*alpha/(NEGS+0.);
+            /* mult = getmult(0., dot)*alpha/(NEGS+0.); */
+            mult = getmult(0., dot)*alpha;
             // adjust the weights
             for (int i=0; i<D; i++)  produpdate[i] += mult*randcv[i];
             for (int i=0; i<D; i++)  randcv[i] += mult*pv[i];
