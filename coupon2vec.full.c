@@ -20,8 +20,8 @@
 // num_customers=111137, num_products=42327
 /* #define DATAFILE "data/shuftransactions.csv"  // Note there are 142,221,150 lines */
 #define DATAFILE "data/shuftransactions.csv"  // Note there are 142,221,150 lines
-#define CUSTFILE "output/cust_vecs_shuf"
-#define PRODFILE "output/prod_vecs_shuf"
+#define CUSTFILE "output/cust_vecs_nob"
+#define PRODFILE "output/prod_vecs_nob"
 #define WITH_ZLIB
 #define MAX_STRING 1000
 #define ARRAY_GROWTH 1000
@@ -250,7 +250,7 @@ void run(FILE *fp) {
     real *produpdate = calloc(D, sizeof(real));
     real *cv;
     real *pv;
-    real *randcv;
+    /* real *randcv; */
     real *randpv;
 
     real dot, mult;
@@ -300,19 +300,19 @@ void run(FILE *fp) {
             for (int i=0; i<D; i++)  custupdate[i] += mult*randpv[i];
             for (int i=0; i<D; i++)  randpv[i] += mult*cv[i];
         }
-        for (int i=0; i<quantity*NEGS; i++) {
-            long randc = (lqrand()%CUSTS);
-            randcv = customer_vecs + D*randc;
-            // get the dot product
-            dot = 0.;
-            for (int i=0; i<D; i++) dot += randcv[i]*pv[i];
-            // get the multiplier
-            /* mult = getmult(0., dot)*alpha/(NEGS+0.); */
-            mult = getmult(0., dot)*alpha;
-            // adjust the weights
-            for (int i=0; i<D; i++)  produpdate[i] += mult*randcv[i];
-            for (int i=0; i<D; i++)  randcv[i] += mult*pv[i];
-        }
+        /* for (int i=0; i<quantity*NEGS; i++) { */
+        /*     long randc = (lqrand()%CUSTS); */
+        /*     randcv = customer_vecs + D*randc; */
+        /*     // get the dot product */
+        /*     dot = 0.; */
+        /*     for (int i=0; i<D; i++) dot += randcv[i]*pv[i]; */
+        /*     // get the multiplier */
+        /*     /1* mult = getmult(0., dot)*alpha/(NEGS+0.); *1/ */
+        /*     mult = getmult(0., dot)*alpha; */
+        /*     // adjust the weights */
+        /*     for (int i=0; i<D; i++)  produpdate[i] += mult*randcv[i]; */
+        /*     for (int i=0; i<D; i++)  randcv[i] += mult*pv[i]; */
+        /* } */
 
         // apply updates
         for (int i=0; i<D; i++) cv[i] += custupdate[i];
