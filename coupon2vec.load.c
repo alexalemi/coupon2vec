@@ -52,6 +52,10 @@ real *exp_table;
 const int hash_size = 30000000;  // Maximum 30 * 0.7 = 21M words in the vocabulary
 long *customer_hash;
 long *product_hash;
+long linenum = 0;
+
+real *custupdate = calloc(D, sizeof(real));
+real *produpdate = calloc(D, sizeof(real));
 
 typedef struct customer {
     long id;
@@ -237,9 +241,19 @@ double inline getmult(double label, double dot) {
 
 // learn a single step
 void onestep(long customer_id, long product_id) {
-    long customer_loc =  find_customer(id);
+    memset(custupdate, 0, D*sizeof(real));
+    memset(produpdate, 0, D*sizeof(real));
+    real *cv;
+    real *pv;
+    real *randcv;
+    real *randpv;
+    real dot, mult;
+    long customer_loc, product_loc;
+
+    linenum++;
+    customer_loc =  find_customer(id);
     if (customer_loc == -1) customer_loc = add_customer(id);
-    long product_loc = find_product(company, brand);
+    product_loc = find_product(company, brand);
     if (product_loc == -1) product_loc = add_product(company, brand);
 
     // Do the update
@@ -253,11 +267,11 @@ void onestep(long customer_id, long product_id) {
     // adjust the weights
     dot = 0.;
     for (int i=0; i<D; i++) dot += cv[i]*pv[i];
-    mult = quantity*getmult(1., dot)*alpha;
+    mult = getmult(1., dot)*alpha;
     for (int i=0; i<D; i++)  custupdate[i] = mult*pv[i];
     for (int i=0; i<D; i++)  produpdate[i] = mult*cv[i];
 
-    for (int i=0; i<quantity*NEGS; i++) {
+    for (int i=0; i<NEGS; i++) {
         long randp = (lqrand()%PRODS);
         randpv = product_vecs + D*randp;
         // get the dot product
@@ -270,19 +284,19 @@ void onestep(long customer_id, long product_id) {
         for (int i=0; i<D; i++)  custupdate[i] += mult*randpv[i];
         for (int i=0; i<D; i++)  randpv[i] += mult*cv[i];
     }
-    /* for (int i=0; i<quantity*NEGS; i++) { */
-    /*     long randc = (lqrand()%CUSTS); */
-    /*     randcv = customer_vecs + D*randc; */
-    /*     // get the dot product */
-    /*     dot = 0.; */
-    /*     for (int i=0; i<D; i++) dot += randcv[i]*pv[i]; */
-    /*     // get the multiplier */
-    /*     /1* mult = getmult(0., dot)*alpha/(NEGS+0.); *1/ */
-    /*     mult = getmult(0., dot)*alpha; */
-    /*     // adjust the weights */
-    /*     for (int i=0; i<D; i++)  produpdate[i] += mult*randcv[i]; */
-    /*     for (int i=0; i<D; i++)  randcv[i] += mult*pv[i]; */
-    /* } */
+    for (int i=0; i<NEGS; i++) {
+        long randc = (lqrand()%CUSTS);
+        randcv = customer_vecs + D*randc;
+        // get the dot product
+        dot = 0.;
+        for (int i=0; i<D; i++) dot += randcv[i]*pv[i];
+        // get the multiplier
+        /* mult = getmult(0., dot)*alpha/(NEGS+0.); */
+        mult = getmult(0., dot)*alpha;
+        // adjust the weights
+        for (int i=0; i<D; i++)  produpdate[i] += mult*randcv[i];
+        for (int i=0; i<D; i++)  randcv[i] += mult*pv[i];
+    }
 
     // apply updates
     for (int i=0; i<D; i++) cv[i] += custupdate[i];
@@ -294,139 +308,21 @@ void onestep(long customer_id, long product_id) {
 void run(FILE *fp) {
     clock_t start = clock();
     clock_t now;
-    int label;
+}
 
-    debug("Populating Hashes...");
-    long id, company, brand, quantity;
-    rewind(fp);
-    char dump[MAX_STRING+1];
+
+// read in the input file
+// and figure out pairs that
+// we want to train on
+void readstates() {
+
+    long quantity = 0;
     // get the first line
     fgets(dump, MAX_STRING, fp);
-
-    // create the temporary arrays
-    real *custupdate = calloc(D, sizeof(real));
-    real *produpdate = calloc(D, sizeof(real));
-    real *cv;
-    real *pv;
-    /* real *randcv; */
-    real *randpv;
-
-    real dot, mult;
-    long customer_loc, product_loc;
-
-    long linenum = 1; 
+    fgets(dump, MAX_STRING, fp);
     // file is in format <id,chain,dept,category,company,brand,date,productsize,productmeasure,purchasequantity,purchaseamount>
-    while (!feof(fp)) {
-        // get the next line from the file
-        fgets(dump, MAX_STRING, fp);
-        linenum++;
-        sscanf(dump, "%ld,%*ld,%*ld,%*ld,%ld,%ld,%*25[^,],%*ld,%*30[^,],%ld,%*s", &id, &company, &brand, &quantity);
-        /* quantity = 1; */
-        /* debug("Found id: %ld, company: %ld, brand: %ld", id, company, brand); */
+    sscanf(dump, "%*ld,%*ld,%*ld,%*ld,%*ld,%*ld,%*25[^,],%*ld,%*30[^,],%ld,%*s", &quantity);
 
-        customer_loc =  find_customer(id);
-        if (customer_loc == -1) customer_loc = add_customer(id);
-        product_loc = find_product(company, brand);
-        if (product_loc == -1) product_loc = add_product(company, brand);
-
-        // Do the update
-        label = 1;
-        cv = customer_vecs + customer_loc*D;
-        pv = product_vecs  + product_loc*D;
-        alpha = ALPHA;
-        alpha = ALPHA * (1. - linenum / (real)(LINES + 1.));
-        if (alpha < ALPHA * 0.0001) alpha = ALPHA * 0.0001;
-
-        /* debug("Looking at customer: %ld, product: %ld, dot: %g, mult: %g", customer_loc, product_loc, dot, mult); */
-        // adjust the weights
-        dot = 0.;
-        for (int i=0; i<D; i++) dot += cv[i]*pv[i];
-        mult = quantity*getmult(1., dot)*alpha;
-        for (int i=0; i<D; i++)  custupdate[i] = mult*pv[i];
-        for (int i=0; i<D; i++)  produpdate[i] = mult*cv[i];
-
-        for (int i=0; i<quantity*NEGS; i++) {
-            long randp = (lqrand()%PRODS);
-            randpv = product_vecs + D*randp;
-            // get the dot product
-            dot = 0.;
-            for (int i=0; i<D; i++) dot += cv[i]*randpv[i];
-            // get the multiplier
-            /* mult = getmult(0., dot)*alpha/(NEGS+0.); */
-            mult = getmult(0., dot)*alpha;
-            // adjust the weights
-            for (int i=0; i<D; i++)  custupdate[i] += mult*randpv[i];
-            for (int i=0; i<D; i++)  randpv[i] += mult*cv[i];
-        }
-        /* for (int i=0; i<quantity*NEGS; i++) { */
-        /*     long randc = (lqrand()%CUSTS); */
-        /*     randcv = customer_vecs + D*randc; */
-        /*     // get the dot product */
-        /*     dot = 0.; */
-        /*     for (int i=0; i<D; i++) dot += randcv[i]*pv[i]; */
-        /*     // get the multiplier */
-        /*     /1* mult = getmult(0., dot)*alpha/(NEGS+0.); *1/ */
-        /*     mult = getmult(0., dot)*alpha; */
-        /*     // adjust the weights */
-        /*     for (int i=0; i<D; i++)  produpdate[i] += mult*randcv[i]; */
-        /*     for (int i=0; i<D; i++)  randcv[i] += mult*pv[i]; */
-        /* } */
-
-        // apply updates
-        for (int i=0; i<D; i++) cv[i] += custupdate[i];
-        for (int i=0; i<D; i++) pv[i] += produpdate[i];
-
-        for (int i=0; i<D; i++)
-            if (isnan(cv[i]) || isnan(pv[i])) {
-                log_err("We've hit a nan!!!!, linenum=%ld, line=%s", linenum, dump);
-                exit(1);
-            }
-
-        if (linenum%10000 == 0) { 
-            /* double totcupdate = 0.; */
-            /* double totpupdate = 0.; */
-            /* for (int i=0; i<D; i++) totcupdate += custupdate[i]*custupdate[i]; */
-            /* for (int i=0; i<D; i++) totpupdate += produpdate[i]*produpdate[i]; */
-            /* double totcv = 0.; */
-            /* double totpv = 0.; */
-            /* for (int i=0; i<D; i++) totcv += cv[i]*cv[i]; */
-            /* for (int i=0; i<D; i++) totpv += pv[i]*pv[i]; */
-            /* double totcsize = 0.; */
-            /* double totpsize = 0.; */
-            /* for (long i=0; i<D*CUSTS; i++) totcsize += customer_vecs[i]*customer_vecs[i]; */
-            /* for (long i=0; i<D*CUSTS; i++) totpsize += product_vecs[i]*product_vecs[i]; */
-
-            now = clock();
-            int seconds_remaining = (int)((now - start)/(CLOCKS_PER_SEC+0.)*LINES/(linenum+0.));
-            int hours = seconds_remaining/(60*60);
-            seconds_remaining -= hours*60*60;
-            int minutes = seconds_remaining/60;
-            seconds_remaining -= minutes*60;
-            printf("%c%ldK lines processed. %.2f%% done. alpha=%g, num_customers=%ld, num_products=%ld. est time remaining %dh%2dm             ", 
-                    13, linenum/1000, linenum/(LINES+0.)*100., alpha, num_customers, num_products, hours, minutes);
-            /* printf("%c%ldK lines processed. %.2f%% done. alpha=%g, num_customers=%ld, num_products=%ld. est time remaining %dh%2dm, csize=%g,%g psize=%g,%g             ", */ 
-            /*         13, linenum/1000, linenum/(LINES+0.)*100., alpha, num_customers, num_products, hours, minutes, */ 
-            /*         sqrt(totcupdate), sqrt(totcv), */
-            /*         /1* sqrt(totcsize), *1/ */
-            /*         sqrt(totpupdate), sqrt(totpv) ); */
-            /*         /1* sqrt(totpsize) ); *1/ */
-            fflush(stdout);
-        }
-
-        if (linenum%10000000 == 0) {
-            FILE *fc = fopen(CUSTFILE,"w");
-            print_customers(fc);
-            fclose(fc);
-            FILE *fp = fopen(PRODFILE,"w");
-            print_products(fp);
-            fclose(fp);
-        }
-
-        if (linenum>LINES-1) break;
-
-        /* if (linenum > 100000) break; */
-    }
-    printf("\n");
 }
 
 
