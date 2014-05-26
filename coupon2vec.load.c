@@ -1,6 +1,9 @@
 /*
  * My attempt at using the word2vec 
  * framework for doing the kaggle challenge
+ * This version loads all of the training examples
+ * into memory and then shuffles them
+ * before training
  *
  * Author: Alex Alemi
  * Date: 20140507
@@ -230,6 +233,61 @@ double inline getmult(double label, double dot) {
     else if (dot < -MAX_EXP) mult = (label - 0.);
     else mult = (label-exp_table[(int)((dot + MAX_EXP) * (EXP_TABLE_SIZE / MAX_EXP / 2))]);
     return mult;
+}
+
+// learn a single step
+void onestep(long customer_id, long product_id) {
+    long customer_loc =  find_customer(id);
+    if (customer_loc == -1) customer_loc = add_customer(id);
+    long product_loc = find_product(company, brand);
+    if (product_loc == -1) product_loc = add_product(company, brand);
+
+    // Do the update
+    label = 1;
+    cv = customer_vecs + customer_loc*D;
+    pv = product_vecs  + product_loc*D;
+    alpha = ALPHA * (1. - linenum / (real)(LINES + 1.));
+    if (alpha < ALPHA * 0.0001) alpha = ALPHA * 0.0001;
+
+    /* debug("Looking at customer: %ld, product: %ld, dot: %g, mult: %g", customer_loc, product_loc, dot, mult); */
+    // adjust the weights
+    dot = 0.;
+    for (int i=0; i<D; i++) dot += cv[i]*pv[i];
+    mult = quantity*getmult(1., dot)*alpha;
+    for (int i=0; i<D; i++)  custupdate[i] = mult*pv[i];
+    for (int i=0; i<D; i++)  produpdate[i] = mult*cv[i];
+
+    for (int i=0; i<quantity*NEGS; i++) {
+        long randp = (lqrand()%PRODS);
+        randpv = product_vecs + D*randp;
+        // get the dot product
+        dot = 0.;
+        for (int i=0; i<D; i++) dot += cv[i]*randpv[i];
+        // get the multiplier
+        /* mult = getmult(0., dot)*alpha/(NEGS+0.); */
+        mult = getmult(0., dot)*alpha;
+        // adjust the weights
+        for (int i=0; i<D; i++)  custupdate[i] += mult*randpv[i];
+        for (int i=0; i<D; i++)  randpv[i] += mult*cv[i];
+    }
+    /* for (int i=0; i<quantity*NEGS; i++) { */
+    /*     long randc = (lqrand()%CUSTS); */
+    /*     randcv = customer_vecs + D*randc; */
+    /*     // get the dot product */
+    /*     dot = 0.; */
+    /*     for (int i=0; i<D; i++) dot += randcv[i]*pv[i]; */
+    /*     // get the multiplier */
+    /*     /1* mult = getmult(0., dot)*alpha/(NEGS+0.); *1/ */
+    /*     mult = getmult(0., dot)*alpha; */
+    /*     // adjust the weights */
+    /*     for (int i=0; i<D; i++)  produpdate[i] += mult*randcv[i]; */
+    /*     for (int i=0; i<D; i++)  randcv[i] += mult*pv[i]; */
+    /* } */
+
+    // apply updates
+    for (int i=0; i<D; i++) cv[i] += custupdate[i];
+    for (int i=0; i<D; i++) pv[i] += produpdate[i];
+
 }
 
 // learn some stuff
