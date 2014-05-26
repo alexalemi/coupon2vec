@@ -32,6 +32,7 @@
 #define CUSTS 311541    
 #define PRODS 61318
 #define LINES 349655789
+#define INTERACTIONS 587467189
 /* #define ALPHA 0.000065 */
 /* #define ALPHA 0.025 */
 /* #define ALPHA 0.0025 */
@@ -54,8 +55,8 @@ long *customer_hash;
 long *product_hash;
 long linenum = 0;
 
-real *custupdate = calloc(D, sizeof(real));
-real *produpdate = calloc(D, sizeof(real));
+real *custupdate;
+real *produpdate;
 
 typedef struct customer {
     long id;
@@ -65,6 +66,12 @@ typedef struct product {
     long company, brand;
 } product;
 
+typedef struct purchase {
+    customer* custp;
+    product* prodp;
+} purchase;
+
+purchase* purchases;
 customer* customers;
 product* products;
 
@@ -149,6 +156,8 @@ void initialize() {
     srand(time(NULL));
     sqrand(time(NULL));
     
+    custupdate = calloc(D, sizeof(real));
+    produpdate = calloc(D, sizeof(real));
 
     // set the hash bins to all be empty
     customer_hash = calloc(hash_size, sizeof(long));
@@ -177,6 +186,8 @@ void initialize() {
         exp_table[i] = exp_table[i] / (exp_table[i] + 1);                   // Precompute f(x) = x / (x + 1)
     }
 
+    // initialize the purchases array
+    purchases = malloc(INTERACTIONS * sizeof(purchase));
     return;
 error:
     log_err("Huston we have a problem!");
@@ -240,7 +251,7 @@ double inline getmult(double label, double dot) {
 }
 
 // learn a single step
-void onestep(long customer_id, long product_id) {
+void onestep(purchase p) {
     memset(custupdate, 0, D*sizeof(real));
     memset(produpdate, 0, D*sizeof(real));
     real *cv;
@@ -249,12 +260,14 @@ void onestep(long customer_id, long product_id) {
     real *randpv;
     real dot, mult;
     long customer_loc, product_loc;
+    int label;
 
     linenum++;
+    long id = p.custp->id;
     customer_loc =  find_customer(id);
-    if (customer_loc == -1) customer_loc = add_customer(id);
+    long company = p.prodp->company;
+    long brand = p.prodp->brand;
     product_loc = find_product(company, brand);
-    if (product_loc == -1) product_loc = add_product(company, brand);
 
     // Do the update
     label = 1;
@@ -304,24 +317,75 @@ void onestep(long customer_id, long product_id) {
 
 }
 
+// shuffle all of the purchases
+// using a fisher yates shuffle
+void shuffle_purchases() {
+    for (long i=INTERACTIONS-1; i>0; i--) {
+        long j = lqrand() % i;
+        purchase temp = purchases[j];
+        purchases[j] = purchases[i];
+        purchases[i] = temp;
+    }
+}
+
 // learn some stuff
-void run(FILE *fp) {
+// shuffle the array of purchases
+// and then consume all of it
+void run() {
     clock_t start = clock();
     clock_t now;
+    debug("Shuffling...");
+    shuffle_purchases();
+    debug("Finished shuffle.");
+    linenum = 0;
+
+    for (long i=0; i<INTERACTIONS; i++) {
+        onestep(purchases[i]);
+
+        if (i%10000==0) {
+            now = clock();
+            int seconds_remaining = (int)((now - start)/(CLOCKS_PER_SEC+0.)*INTERACTIONS/(linenum+0.));
+            int hours = seconds_remaining/(60*60);
+            seconds_remaining -= hours*60*60;
+            int minutes = seconds_remaining/60;
+            seconds_remaining -= minutes*60;
+            printf("%c%ldK lines processed. %.2f%% done. est time remaining %dh%2dm             ", 
+                    13, linenum/1000, linenum/(INTERACTIONS+0.)*100., hours, minutes);
+            fflush(stdout);
+        }
+    }
 }
 
 
 // read in the input file
 // and figure out pairs that
 // we want to train on
-void readstates() {
+void readpurchases(FILE* fp) {
+    long long pk = 0;
+    long id, company, brand, quantity;
+    long customer_loc, product_loc;
 
-    long quantity = 0;
+    char dump[MAX_STRING+1];
     // get the first line
     fgets(dump, MAX_STRING, fp);
-    fgets(dump, MAX_STRING, fp);
-    // file is in format <id,chain,dept,category,company,brand,date,productsize,productmeasure,purchasequantity,purchaseamount>
-    sscanf(dump, "%*ld,%*ld,%*ld,%*ld,%*ld,%*ld,%*25[^,],%*ld,%*30[^,],%ld,%*s", &quantity);
+
+    while (!feof(fp)) {
+        fgets(dump, MAX_STRING, fp);
+        // file is in format <id,chain,dept,category,company,brand,date,productsize,productmeasure,purchasequantity,purchaseamount>
+        sscanf(dump, "%ld,%*ld,%*ld,%*ld,%ld,%ld,%*25[^,],%*ld,%*30[^,],%ld,%*s", &id, &company, &brand, &quantity);
+        customer_loc =  find_customer(id);
+        if (customer_loc == -1) customer_loc = add_customer(id);
+        product_loc = find_product(company, brand);
+        if (product_loc == -1) product_loc = add_product(company, brand);
+        customer* custp = &customers[customer_loc];
+        product* prodp = &products[product_loc];
+
+        for (int i=0; i<quantity; i++) {
+            purchases[pk].custp = custp;
+            purchases[pk].prodp = prodp;
+            pk++;
+        }
+    }
 
 }
 
@@ -331,17 +395,14 @@ int main(int argc, char *argv[]) {
     initialize();
     initialize_vectors();
     FILE *datfile = fopen(DATAFILE,"r");
+    debug("Reading purchases...");
+    readpurchases(datfile);
+    debug("Finished read purchases.");
 
-    run(datfile);
-    run(datfile);
-    run(datfile);
-    run(datfile);
-    run(datfile);
-    run(datfile);
-    run(datfile);
-    run(datfile);
-    run(datfile);
-    run(datfile);
+    for (int i=0; i<10; i++) {
+        debug("ON RUN %i", i);
+        run();
+    }
 
     FILE *fc = fopen(CUSTFILE,"w");
     print_customers(fc);
