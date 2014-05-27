@@ -53,7 +53,7 @@ real *exp_table;
 const int hash_size = 30000000;  // Maximum 30 * 0.7 = 21M words in the vocabulary
 long *customer_hash;
 long *product_hash;
-long linenum = 0;
+long long linenum = 0;
 
 real *custupdate;
 real *produpdate;
@@ -262,12 +262,22 @@ void onestep(purchase p) {
     long customer_loc, product_loc;
     int label;
 
-    linenum++;
+    /* linenum++; */
     long id = p.custp->id;
     customer_loc =  find_customer(id);
+    if (customer_loc == -1) {
+        // we have a bad one
+        log_warn("Found a badone on %lld", linenum);
+        return;
+    }
     long company = p.prodp->company;
     long brand = p.prodp->brand;
     product_loc = find_product(company, brand);
+    if (product_loc == -1) {
+        // bad one
+        log_warn("Found a badnone on %lld", linenum);
+        return;
+    }
 
     // Do the update
     label = 1;
@@ -276,13 +286,13 @@ void onestep(purchase p) {
     alpha = ALPHA * (1. - linenum / (real)(LINES + 1.));
     if (alpha < ALPHA * 0.0001) alpha = ALPHA * 0.0001;
 
-    /* debug("Looking at customer: %ld, product: %ld, dot: %g, mult: %g", customer_loc, product_loc, dot, mult); */
     // adjust the weights
     dot = 0.;
     for (int i=0; i<D; i++) dot += cv[i]*pv[i];
     mult = getmult(1., dot)*alpha;
     for (int i=0; i<D; i++)  custupdate[i] = mult*pv[i];
     for (int i=0; i<D; i++)  produpdate[i] = mult*cv[i];
+    /* debug("Looking at customer: %ld, product: %ld, dot: %g, mult: %g", customer_loc, product_loc, dot, mult); */
 
     for (int i=0; i<NEGS; i++) {
         long randp = (lqrand()%PRODS);
@@ -320,8 +330,8 @@ void onestep(purchase p) {
 // shuffle all of the purchases
 // using a fisher yates shuffle
 void shuffle_purchases() {
-    for (long i=INTERACTIONS-1; i>0; i--) {
-        long j = lqrand() % i;
+    for (long long i=INTERACTIONS-1; i>0; i--) {
+        long long j = lqrand() % i;
         purchase temp = purchases[j];
         purchases[j] = purchases[i];
         purchases[i] = temp;
@@ -339,7 +349,8 @@ void run() {
     debug("Finished shuffle.");
     linenum = 0;
 
-    for (long i=0; i<INTERACTIONS; i++) {
+    for (long long i=0; i<INTERACTIONS; i++) {
+        linenum = i;
         onestep(purchases[i]);
 
         if (i%10000==0) {
@@ -349,7 +360,7 @@ void run() {
             seconds_remaining -= hours*60*60;
             int minutes = seconds_remaining/60;
             seconds_remaining -= minutes*60;
-            printf("%c%ldK lines processed. %.2f%% done. est time remaining %dh%2dm             ", 
+            printf("%c%lldK lines processed. %.2f%% done. est time remaining %dh%2dm             ", 
                     13, linenum/1000, linenum/(INTERACTIONS+0.)*100., hours, minutes);
             fflush(stdout);
         }
@@ -369,7 +380,12 @@ void readpurchases(FILE* fp) {
     // get the first line
     fgets(dump, MAX_STRING, fp);
 
+    printf("                              |\r");
     while (!feof(fp)) {
+        if ((pk*30)%INTERACTIONS==0) {
+            printf("#");
+            fflush(stdout);
+        }
         fgets(dump, MAX_STRING, fp);
         // file is in format <id,chain,dept,category,company,brand,date,productsize,productmeasure,purchasequantity,purchaseamount>
         sscanf(dump, "%ld,%*ld,%*ld,%*ld,%ld,%ld,%*25[^,],%*ld,%*30[^,],%ld,%*s", &id, &company, &brand, &quantity);
@@ -386,13 +402,16 @@ void readpurchases(FILE* fp) {
             pk++;
         }
     }
-
+    printf("total pk: %lld\n", pk);
 }
 
 
 
 int main(int argc, char *argv[]) {
+    debug("starting");
+    debug("initialize.");
     initialize();
+    debug("initialize vectors.");
     initialize_vectors();
     FILE *datfile = fopen(DATAFILE,"r");
     debug("Reading purchases...");
