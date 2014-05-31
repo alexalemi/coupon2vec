@@ -188,6 +188,8 @@ void initialize() {
 
     // initialize the purchases array
     purchases = malloc(INTERACTIONS * sizeof(purchase));
+    check_mem(purchases, "Not enough memory");
+
     return;
 error:
     log_err("Huston we have a problem!");
@@ -397,6 +399,7 @@ void readpurchases(FILE* fp) {
         product* prodp = &products[product_loc];
 
         for (int i=0; i<quantity; i++) {
+            if (pk > INTERACTIONS) log_err("Went off the end");
             purchases[pk].custp = custp;
             purchases[pk].prodp = prodp;
             pk++;
