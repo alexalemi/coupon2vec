@@ -32,7 +32,8 @@
 #define CUSTS 311541    
 #define PRODS 61318
 #define LINES 349655789
-#define INTERACTIONS 587467189
+/*#define INTERACTIONS 587467189*/
+#define INTERACTIONS 582605958
 /* #define ALPHA 0.000065 */
 /* #define ALPHA 0.025 */
 /* #define ALPHA 0.0025 */
@@ -67,8 +68,8 @@ typedef struct product {
 } product;
 
 typedef struct purchase {
-    customer* custp;
-    product* prodp;
+    customer custp;
+    product prodp;
 } purchase;
 
 purchase* purchases;
@@ -188,8 +189,7 @@ void initialize() {
 
     // initialize the purchases array
     purchases = malloc(INTERACTIONS * sizeof(purchase));
-    check_mem(purchases, "Not enough memory");
-
+    check_mem(purchases);
     return;
 error:
     log_err("Huston we have a problem!");
@@ -200,10 +200,12 @@ void initialize_vectors() {
     if (customer_vecs) free(customer_vecs);
     if (product_vecs) free(product_vecs);
     /* customer_vecs = malloc(CUSTS*D*sizeof(real)); */
-    long long a = posix_memalign((void **)&customer_vecs, 128, (long long)CUSTS * D * sizeof(real));
+    int a = posix_memalign((void **)&customer_vecs, 128, (long long)CUSTS * D * sizeof(real));
+    check(!a, "Failed to memalign customer vectors");
     check(customer_vecs, "Failed to initialize customer vectors");
     /* product_vecs = malloc(PRODS*D*sizeof(real)); */
     a = posix_memalign((void **)&product_vecs, 128, (long long)PRODS * D * sizeof(real));
+    check(!a, "Failed to memalign customer vectors");
     check(product_vecs,"Failed to initialize product vectors");
     for (long a=0; a<CUSTS*D; a++) customer_vecs[a] = qrand_normal() / (2*D);
     for (long a=0; a<PRODS*D; a++) product_vecs[a] = qrand_normal() / (2*D);
@@ -262,27 +264,24 @@ void onestep(purchase p) {
     real *randpv;
     real dot, mult;
     long customer_loc, product_loc;
-    int label;
 
-    /* linenum++; */
-    long id = p.custp->id;
+    long id = p.custp.id;
     customer_loc =  find_customer(id);
     if (customer_loc == -1) {
         // we have a bad one
-        log_warn("Found a badone on %lld", linenum);
+        log_warn("Found a bad customer_loc" );
         return;
     }
-    long company = p.prodp->company;
-    long brand = p.prodp->brand;
+    long company = p.prodp.company;
+    long brand = p.prodp.brand;
     product_loc = find_product(company, brand);
     if (product_loc == -1) {
         // bad one
-        log_warn("Found a badnone on %lld", linenum);
+        log_warn("Found a bad product_loc");
         return;
     }
 
     // Do the update
-    label = 1;
     cv = customer_vecs + customer_loc*D;
     pv = product_vecs  + product_loc*D;
     alpha = ALPHA * (1. - linenum / (real)(LINES + 1.));
@@ -369,6 +368,55 @@ void run() {
     }
 }
 
+// parse id, company, brand, and quantity from a single line
+// Unlike sscanf, this can handle missing values
+// Returns 0 if successful, -1 if not
+int parseline(char* line, long *id, long *company, long *brand, long *quantity) {
+    // file is in format <id,chain,dept,category,company,brand,date,productsize,productmeasure,purchasequantity,purchaseamount>
+    char *id_str, *company_str, *brand_str, *quantity_str;
+
+    id_str = strtok(line, ",");
+    if (!id_str || *id_str == '\0') {
+        debug("Could not parse id from %s", line);
+        return -1;
+    }
+    *id = atol(id_str);
+
+    strtok(NULL, ","); // chain
+    strtok(NULL, ","); // dept
+    strtok(NULL, ","); // category
+
+    company_str = strtok(NULL, ",");
+    if (!company_str || *company_str == '\0') {
+        debug("Could not parse company from %s", line);
+        return -1;
+    }
+    *company = atol(company_str);
+
+    brand_str = strtok(NULL, ",");
+    if (!brand_str || *brand_str == '\0') {
+        debug("Could not parse brand from %s", line);
+        return -1;
+    }
+    *brand = atol(brand_str);
+
+    strtok(NULL, ","); // date
+    strtok(NULL, ","); // productsize
+    strtok(NULL, ","); // productmeasure
+
+    quantity_str = strtok(NULL, ",");
+    *quantity = atol(quantity_str); // productquantity
+    if (!quantity_str || *quantity_str == '\0') {
+        debug("Could not parse quantity from %s", line);
+        return -1;
+    }
+
+    strtok(NULL, ","); // purchaseamount
+
+    return 0;
+
+}
+
 
 // read in the input file
 // and figure out pairs that
@@ -377,6 +425,7 @@ void readpurchases(FILE* fp) {
     long long pk = 0;
     long id, company, brand, quantity;
     long customer_loc, product_loc;
+    int parse_return;
 
     char dump[MAX_STRING+1];
     // get the first line
@@ -388,21 +437,24 @@ void readpurchases(FILE* fp) {
             printf("#");
             fflush(stdout);
         }
+
         fgets(dump, MAX_STRING, fp);
-        // file is in format <id,chain,dept,category,company,brand,date,productsize,productmeasure,purchasequantity,purchaseamount>
-        sscanf(dump, "%ld,%*ld,%*ld,%*ld,%ld,%ld,%*25[^,],%*ld,%*30[^,],%ld,%*s", &id, &company, &brand, &quantity);
+        parse_return = parseline(dump, &id, &company, &brand, &quantity);
+        if (parse_return != 0) continue;
+
         customer_loc =  find_customer(id);
         if (customer_loc == -1) customer_loc = add_customer(id);
         product_loc = find_product(company, brand);
         if (product_loc == -1) product_loc = add_product(company, brand);
-        customer* custp = &customers[customer_loc];
-        product* prodp = &products[product_loc];
 
         for (int i=0; i<quantity; i++) {
-            if (pk > INTERACTIONS) log_err("Went off the end");
-            purchases[pk].custp = custp;
-            purchases[pk].prodp = prodp;
+            purchases[pk].custp = customers[customer_loc];
+            purchases[pk].prodp = products[product_loc];
             pk++;
+            if (pk > INTERACTIONS) {
+                log_err("pk > INTERACTIONS");
+                exit(1);
+            }
         }
     }
     printf("total pk: %lld\n", pk);
