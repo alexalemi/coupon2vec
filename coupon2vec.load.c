@@ -32,7 +32,8 @@
 #define CUSTS 311541    
 #define PRODS 61318
 #define LINES 349655789
-#define INTERACTIONS 587467189
+/*#define INTERACTIONS 587467189*/
+#define INTERACTIONS 585136011
 /* #define ALPHA 0.000065 */
 /* #define ALPHA 0.025 */
 /* #define ALPHA 0.0025 */
@@ -367,6 +368,55 @@ void run() {
     }
 }
 
+// parse id, company, brand, and quantity from a single line
+// Unlike sscanf, this can handle missing values
+// Returns 0 if successful, -1 if not
+int parseline(char* line, long *id, long *company, long *brand, long *quantity) {
+    // file is in format <id,chain,dept,category,company,brand,date,productsize,productmeasure,purchasequantity,purchaseamount>
+    char *id_str, *company_str, *brand_str, *quantity_str;
+
+    id_str = strtok(line, ",");
+    if (!id_str || *id_str == '\0') {
+        debug("Could not parse id from %s", line);
+        return -1;
+    }
+    *id = atol(id_str);
+
+    strtok(NULL, ","); // chain
+    strtok(NULL, ","); // dept
+    strtok(NULL, ","); // category
+
+    company_str = strtok(NULL, ",");
+    if (!company_str || *company_str == '\0') {
+        debug("Could not parse company from %s", line);
+        return -1;
+    }
+    *company = atol(company_str);
+
+    brand_str = strtok(NULL, ",");
+    if (!brand_str || *brand_str == '\0') {
+        debug("Could not parse brand from %s", line);
+        return -1;
+    }
+    *brand = atol(brand_str);
+
+    strtok(NULL, ","); // date
+    strtok(NULL, ","); // productsize
+    strtok(NULL, ","); // productmeasure
+
+    quantity_str = strtok(NULL, ",");
+    *quantity = atol(quantity_str); // productquantity
+    if (!quantity_str || *quantity_str == '\0') {
+        debug("Could not parse quantity from %s", line);
+        return -1;
+    }
+
+    strtok(NULL, ","); // purchaseamount
+
+    return 0;
+
+}
+
 
 // read in the input file
 // and figure out pairs that
@@ -375,6 +425,7 @@ void readpurchases(FILE* fp) {
     long long pk = 0;
     long id, company, brand, quantity;
     long customer_loc, product_loc;
+    int parse_return;
 
     char dump[MAX_STRING+1];
     // get the first line
@@ -387,8 +438,10 @@ void readpurchases(FILE* fp) {
             fflush(stdout);
         }
         fgets(dump, MAX_STRING, fp);
-        // file is in format <id,chain,dept,category,company,brand,date,productsize,productmeasure,purchasequantity,purchaseamount>
-        sscanf(dump, "%ld,%*ld,%*ld,%*ld,%ld,%ld,%*25[^,],%*ld,%*30[^,],%ld,%*s", &id, &company, &brand, &quantity);
+        parse_return = parseline(dump, &id, &company, &brand, &quantity);
+
+        if (parse_return != 0) continue;
+
         customer_loc =  find_customer(id);
         if (customer_loc == -1) customer_loc = add_customer(id);
         product_loc = find_product(company, brand);
@@ -400,6 +453,10 @@ void readpurchases(FILE* fp) {
             purchases[pk].custp = custp;
             purchases[pk].prodp = prodp;
             pk++;
+            if (pk >= INTERACTIONS) {
+                log_err("pk > INTERACTIONS");
+                exit(1);
+            }
         }
     }
     printf("total pk: %lld\n", pk);
