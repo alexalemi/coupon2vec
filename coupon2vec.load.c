@@ -33,7 +33,7 @@
 #define PRODS 61318
 #define LINES 349655789
 /*#define INTERACTIONS 587467189*/
-#define INTERACTIONS 585136011
+#define INTERACTIONS 582605958
 /* #define ALPHA 0.000065 */
 /* #define ALPHA 0.025 */
 /* #define ALPHA 0.0025 */
@@ -68,8 +68,8 @@ typedef struct product {
 } product;
 
 typedef struct purchase {
-    customer* custp;
-    product* prodp;
+    customer custp;
+    product prodp;
 } purchase;
 
 purchase* purchases;
@@ -265,15 +265,15 @@ void onestep(purchase p) {
     real dot, mult;
     long customer_loc, product_loc;
 
-    long id = p.custp->id;
+    long id = p.custp.id;
     customer_loc =  find_customer(id);
     if (customer_loc == -1) {
         // we have a bad one
-        log_warn("Found a badcustomer_loc" );
+        log_warn("Found a bad customer_loc" );
         return;
     }
-    long company = p.prodp->company;
-    long brand = p.prodp->brand;
+    long company = p.prodp.company;
+    long brand = p.prodp.brand;
     product_loc = find_product(company, brand);
     if (product_loc == -1) {
         // bad one
@@ -437,23 +437,21 @@ void readpurchases(FILE* fp) {
             printf("#");
             fflush(stdout);
         }
+
         fgets(dump, MAX_STRING, fp);
         parse_return = parseline(dump, &id, &company, &brand, &quantity);
-
         if (parse_return != 0) continue;
 
         customer_loc =  find_customer(id);
         if (customer_loc == -1) customer_loc = add_customer(id);
         product_loc = find_product(company, brand);
         if (product_loc == -1) product_loc = add_product(company, brand);
-        customer* custp = &customers[customer_loc];
-        product* prodp = &products[product_loc];
 
         for (int i=0; i<quantity; i++) {
-            purchases[pk].custp = custp;
-            purchases[pk].prodp = prodp;
+            purchases[pk].custp = customers[customer_loc];
+            purchases[pk].prodp = products[product_loc];
             pk++;
-            if (pk >= INTERACTIONS) {
+            if (pk > INTERACTIONS) {
                 log_err("pk > INTERACTIONS");
                 exit(1);
             }
