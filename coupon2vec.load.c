@@ -189,6 +189,7 @@ void initialize() {
 
     // initialize the purchases array
     purchases = malloc(INTERACTIONS * sizeof(purchase));
+    check_mem(purchases);
     return;
 error:
     log_err("Huston we have a problem!");
@@ -199,10 +200,12 @@ void initialize_vectors() {
     if (customer_vecs) free(customer_vecs);
     if (product_vecs) free(product_vecs);
     /* customer_vecs = malloc(CUSTS*D*sizeof(real)); */
-    long long a = posix_memalign((void **)&customer_vecs, 128, (long long)CUSTS * D * sizeof(real));
+    int a = posix_memalign((void **)&customer_vecs, 128, (long long)CUSTS * D * sizeof(real));
+    check(!a, "Failed to memalign customer vectors");
     check(customer_vecs, "Failed to initialize customer vectors");
     /* product_vecs = malloc(PRODS*D*sizeof(real)); */
     a = posix_memalign((void **)&product_vecs, 128, (long long)PRODS * D * sizeof(real));
+    check(!a, "Failed to memalign customer vectors");
     check(product_vecs,"Failed to initialize product vectors");
     for (long a=0; a<CUSTS*D; a++) customer_vecs[a] = qrand_normal() / (2*D);
     for (long a=0; a<PRODS*D; a++) product_vecs[a] = qrand_normal() / (2*D);
@@ -261,14 +264,12 @@ void onestep(purchase p) {
     real *randpv;
     real dot, mult;
     long customer_loc, product_loc;
-    int label;
 
-    /* linenum++; */
     long id = p.custp->id;
     customer_loc =  find_customer(id);
     if (customer_loc == -1) {
         // we have a bad one
-        log_warn("Found a badone on %lld", linenum);
+        log_warn("Found a badcustomer_loc" );
         return;
     }
     long company = p.prodp->company;
@@ -276,12 +277,11 @@ void onestep(purchase p) {
     product_loc = find_product(company, brand);
     if (product_loc == -1) {
         // bad one
-        log_warn("Found a badnone on %lld", linenum);
+        log_warn("Found a bad product_loc");
         return;
     }
 
     // Do the update
-    label = 1;
     cv = customer_vecs + customer_loc*D;
     pv = product_vecs  + product_loc*D;
     alpha = ALPHA * (1. - linenum / (real)(LINES + 1.));
